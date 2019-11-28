@@ -15,6 +15,7 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"kubevirt.io/containerized-data-importer/pkg/common"
 	"kubevirt.io/containerized-data-importer/pkg/controller"
 	"kubevirt.io/containerized-data-importer/tests/framework"
 	"kubevirt.io/containerized-data-importer/tests/utils"
@@ -43,6 +44,7 @@ var _ = Describe("[vendor:cnv-qe@redhat.com][level:component]DataVolume tests", 
 	tarArchiveURL := fmt.Sprintf(utils.TarArchiveURL, f.CdiInstallNs)
 	InvalidQcowImagesURL := fmt.Sprintf(utils.InvalidQcowImagesURL, f.CdiInstallNs)
 	cirrosURL := fmt.Sprintf(utils.CirrosURL, f.CdiInstallNs)
+	imageioURL := fmt.Sprintf(utils.ImageioURL, f.CdiInstallNs)
 
 	// Invalid (malicious) QCOW images:
 	// An image that causes qemu-img to allocate 152T (original image is 516 bytes)
@@ -64,10 +66,26 @@ var _ = Describe("[vendor:cnv-qe@redhat.com][level:component]DataVolume tests", 
 	})
 
 	Describe("Verify DataVolume", func() {
+
 		table.DescribeTable("should", func(name, command, url, dataVolumeName, errorMessage, eventReason string, phase cdiv1.DataVolumePhase) {
 			repeat := 1
 			var dataVolume *cdiv1.DataVolume
 			switch name {
+			case "imageio":
+				cmName := "imageioCM"
+				stringData := map[string]string{
+					common.KeyAccess: "YWRtaW5AaW50ZXJuYWw=",
+					common.KeySecret: "MTIzNDU2",
+				}
+				s, _ := utils.CreateSecretFromDefinition(f.K8sClient, utils.NewSecretDefinition(nil, stringData, nil, f.Namespace.Name, "mysecret"))
+				cm := &v1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: cmName,
+					},
+					Data: map[string]string{},
+				}
+				f.K8sClient.CoreV1().ConfigMaps(f.Namespace.Name).Create(cm)
+				dataVolume = utils.NewDataVolumeWithImageioImport(dataVolumeName, "1Gi", imageioURL, s.Name, cmName, "123")
 			case "import-http":
 				dataVolume = utils.NewDataVolumeWithHTTPImport(dataVolumeName, "1Gi", url)
 			case "import-https":
